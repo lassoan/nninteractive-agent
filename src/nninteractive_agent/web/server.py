@@ -24,6 +24,7 @@ import contextlib
 import hashlib
 import ipaddress
 import json
+import mimetypes
 import os
 import re
 import sys
@@ -122,6 +123,10 @@ def create_app(
         await manager.shutdown()
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    # On Windows, mimetypes reads the registry, which can map .mjs or .js to text/plain; browsers then
+    # refuse to run the page's modules.
+    for suffix in (".js", ".mjs"):
+        mimetypes.add_type("text/javascript", suffix)
     app.mount("/static", StaticFiles(directory=STATIC), name="static")
 
     @app.middleware("http")
