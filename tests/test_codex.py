@@ -4,6 +4,7 @@ import asyncio
 import json
 import sys
 import threading
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -134,6 +135,7 @@ class FakeLLMServer(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
+        FakeLLMServer.last = body
         effort = body.get("output_config", {}).get("effort")
         if effort in ("high", "xhigh", "max"):
             self._json(400, {"error": {"message": f"Unexpected reasoning effort {effort}."}})
@@ -151,14 +153,24 @@ def test_server_backend_probes_models_and_efforts(monkeypatch):
         with pytest.raises(LLMError, match="choose a model"):
             make_backend("server", url=url)
         b = make_backend("server", model="org/vision-27b", url=url)
+        # Claude Code talks to the server through a relay that moves mid-conversation system messages
+        # into the system prompt (chat templates such as Qwen's reject them).
+        relay = b.env["ANTHROPIC_BASE_URL"]
+        assert relay.startswith("http://127.0.0.1:") and relay != url.rstrip("/")
+        request = {"model": "org/vision-27b", "max_tokens": 1, "system": "Be brief.", "messages": [
+            {"role": "user", "content": "hi"}, {"role": "system", "content": [{"type": "text", "text": "env"}]},
+            {"role": "user", "content": "go"}]}  # fmt: skip
+        req = urllib.request.Request(relay + "/v1/messages", json.dumps(request).encode(),
+                                     {"content-type": "application/json"})  # fmt: skip
+        with urllib.request.urlopen(req, timeout=10) as r:
+            assert json.loads(r.read())["content"][0]["text"] == "h"
     finally:
         httpd.shutdown()
+    assert FakeLLMServer.last["system"] == [{"type": "text", "text": "Be brief."}, {"type": "text", "text": "env"}]
+    assert [m["role"] for m in FakeLLMServer.last["messages"]] == ["user", "user"]
     assert b.models == [{"id": "org/vision-27b", "label": "vision-27b", "efforts": ["low", "medium"]}]
     assert b.effort == "medium" and b.engine == "claude"
-    assert (
-        b.env["ANTHROPIC_BASE_URL"] == url.rstrip("/")
-        and b.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "org/vision-27b"
-    )
+    assert b.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "org/vision-27b"
     assert "127.0.0.1" in __import__("os").environ["NO_PROXY"]
 
 

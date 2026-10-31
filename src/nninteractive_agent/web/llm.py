@@ -26,6 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .agent_sdk import AgentSession
+from .server_relay import relay_url
 
 BACKENDS = ("claude", "claude-api", "codex", "codex-api", "server")
 DEFAULT_LLM_URL = "http://localhost:8000"  # vLLM's default port
@@ -171,8 +172,11 @@ def _server_backend(url: str, model: str | None, effort: str, key: str | None) -
             raise LLMError(f"{url}/v1/messages answered {status} for {model}: {str(body)[:300]}")
     if not efforts:
         raise LLMError(f"{model} on {url} takes none of the efforts {', '.join(CLAUDE_EFFORTS)}")
+    relay = relay_url(url)  # moves Claude Code's mid-conversation system messages, which many models reject
+    for var in ("NO_PROXY", "no_proxy"):
+        os.environ[var] = ",".join(x for x in (os.environ.get(var), "127.0.0.1") if x)
     env = {
-        "ANTHROPIC_BASE_URL": url, "ANTHROPIC_API_KEY": key,
+        "ANTHROPIC_BASE_URL": relay, "ANTHROPIC_API_KEY": key,
         # Subagents and Claude Code's own small requests use the same model.
         "ANTHROPIC_DEFAULT_OPUS_MODEL": model, "ANTHROPIC_DEFAULT_SONNET_MODEL": model,
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
