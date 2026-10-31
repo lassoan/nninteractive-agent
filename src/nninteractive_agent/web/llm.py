@@ -151,10 +151,10 @@ def _server_backend(url: str, model: str | None, effort: str, key: str | None) -
         os.environ[var] = ",".join(x for x in (os.environ.get(var), host) if x)
     key = key or "none"
     headers = {"x-api-key": key, "authorization": f"Bearer {key}", "anthropic-version": "2023-06-01"}
-    status, body = _http(f"{url}/v1/models", headers)
+    status, listing = _http(f"{url}/v1/models", headers)
     if status != 200:
-        raise LLMError(f"{url}/v1/models answered {status}: {str(body)[:300]}")
-    ids = [m.get("id") for m in (body.get("data") or []) if m.get("id")]
+        raise LLMError(f"{url}/v1/models answered {status}: {str(listing)[:300]}")
+    ids = [m.get("id") for m in (listing.get("data") or []) if m.get("id")]
     if model is None and len(ids) == 1:
         model = ids[0]
     if model not in ids:
@@ -172,6 +172,7 @@ def _server_backend(url: str, model: str | None, effort: str, key: str | None) -
             raise LLMError(f"{url}/v1/messages answered {status} for {model}: {str(body)[:300]}")
     if not efforts:
         raise LLMError(f"{model} on {url} takes none of the efforts {', '.join(CLAUDE_EFFORTS)}")
+    window = _context_window(url, model, headers, listing)
     relay = relay_url(url)  # moves Claude Code's mid-conversation system messages, which many models reject
     for var in ("NO_PROXY", "no_proxy"):
         os.environ[var] = ",".join(x for x in (os.environ.get(var), "127.0.0.1") if x)
@@ -182,10 +183,28 @@ def _server_backend(url: str, model: str | None, effort: str, key: str | None) -
         "ANTHROPIC_DEFAULT_HAIKU_MODEL": model,
         "ENABLE_TOOL_SEARCH": "false", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     }  # fmt: skip
+    if window:
+        # Claude Code assumes 200k tokens for a model it does not know, so it would not compact the
+        # conversation before a smaller window fills, and the server would cut answers off. Keep a
+        # quarter of the window for an answer.
+        env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(window)
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(32000, window // 4))
     models = [{"id": model, "label": model.split("/")[-1], "efforts": efforts}]
     return Backend(
         "server", f"{model} on {host}", models, model, effort, env=env, unset=("ANTHROPIC_AUTH_TOKEN",)
     )
+
+
+def _context_window(url: str, model: str, headers: dict, listing: dict) -> int | None:
+    """The context window the server runs ``model`` with, if it says: vLLM lists ``max_model_len``
+    with the model, LM Studio gives ``loaded_context_length`` in its own API."""
+    entry = next((m for m in listing.get("data") or [] if m.get("id") == model), {})
+    if isinstance(entry.get("max_model_len"), int):
+        return entry["max_model_len"]
+    status, body = _http(f"{url}/api/v0/models/{urllib.parse.quote(model)}", headers)
+    if status == 200 and isinstance(body, dict) and isinstance(body.get("loaded_context_length"), int):
+        return body["loaded_context_length"]
+    return None
 
 
 # --------------------------------------------------------------------------- Codex

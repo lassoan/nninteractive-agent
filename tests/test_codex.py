@@ -131,7 +131,7 @@ class FakeLLMServer(BaseHTTPRequestHandler):
         self.wfile.write(raw)
 
     def do_GET(self):
-        self._json(200, {"data": [{"id": "org/vision-27b"}, {"id": "org/text-only"}]})
+        self._json(200, {"data": [{"id": "org/vision-27b", "max_model_len": 65536}, {"id": "org/text-only"}]})
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["content-length"])))
@@ -171,6 +171,8 @@ def test_server_backend_probes_models_and_efforts(monkeypatch):
     assert b.models == [{"id": "org/vision-27b", "label": "vision-27b", "efforts": ["low", "medium"]}]
     assert b.effort == "medium" and b.engine == "claude"
     assert b.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "org/vision-27b"
+    # Claude Code compacts in time for the window the server runs the model with
+    assert b.env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "65536" and b.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "16384"
     assert "127.0.0.1" in __import__("os").environ["NO_PROXY"]
 
 
