@@ -188,7 +188,7 @@ def _server_backend(url: str, model: str | None, effort: str, key: str | None) -
         # conversation before a smaller window fills, and the server would cut answers off. Keep a
         # quarter of the window for an answer.
         env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] = str(window)
-        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(32000, window // 4))
+        env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] = str(min(32000, window // 8))
     models = [{"id": model, "label": model.split("/")[-1], "efforts": efforts}]
     return Backend(
         "server", f"{model} on {host}", models, model, effort, env=env, unset=("ANTHROPIC_AUTH_TOKEN",)

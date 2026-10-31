@@ -172,7 +172,7 @@ def test_server_backend_probes_models_and_efforts(monkeypatch):
     assert b.effort == "medium" and b.engine == "claude"
     assert b.env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] == "org/vision-27b"
     # Claude Code compacts in time for the window the server runs the model with
-    assert b.env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "65536" and b.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "16384"
+    assert b.env["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] == "65536" and b.env["CLAUDE_CODE_MAX_OUTPUT_TOKENS"] == "8192"
     assert "127.0.0.1" in __import__("os").environ["NO_PROXY"]
 
 
